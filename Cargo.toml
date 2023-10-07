@@ -1,0 +1,16 @@
+[package]
+authors = ["ceades"]
+name = "icmprs"
+version = "0.1.0"
+edition = "2021"
+
+[profile.release]
+lto = true
+panic = "abort"
+strip = true
+
+[dependencies]
+anyhow = "1.0"
+clap = { version = "4.4", features = [ "derive" ] }
+env_logger = "0.10"
+log = "0.4"
