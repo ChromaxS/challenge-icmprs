@@ -83,7 +83,7 @@ Note: `cargo run` may not run under `sudo` if it's installed local to the user's
 
 A special CSV mode exists that takes the host parameter as: `host,count,interval`:
 ```
-icmprs (master) $ sudo RUST_LOG=info target/debug/icmprs -- 192.168.2.2,3,200
+icmprs (master) $ sudo target/debug/icmprs -- 192.168.2.2,3,200
 192.168.2.2,1,1169
 192.168.2.2,2,201283
 192.168.2.2,3,401454
@@ -94,7 +94,7 @@ Note: if the specified host times out, then the elapsed time is shown as: `-1`
 
 When running in regular output mode, some ICMP errors are handled, ie host unreachable and TTL exceeded:
 ```
-icmprs (master) $ sudo RUST_LOG=info target/debug/icmprs --output=regular -- 192.168.2.3,3,200
+icmprs (master) $ sudo target/debug/icmprs --output=regular -- 192.168.2.3,3,200
 Pinging 192.168.2.3 (192.168.2.3) with 32 byte(s) of data...
 
 Reply from 192.168.2.1: icmp_seq=1 ttl=63: host unreachable
