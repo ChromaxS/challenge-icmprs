@@ -5,7 +5,7 @@ that just want to get a "thumbs up/down" (non-zero exit code if the host fails t
 least once).
 
 ## License
-icmprs - An asynchronouse ICMP ping implementation in Rust.
+icmprs - An asynchronous ICMP ping implementation in Rust.
 author: Christopher Eades 2023-10-07
 license: CC0 1.0 Universal https://creativecommons.org/publicdomain/zero/1.0/
 

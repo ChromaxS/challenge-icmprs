@@ -1,6 +1,6 @@
 /*
 
-icmprs - An asynchronouse ICMP ping implementation in Rust.
+icmprs - An asynchronous ICMP ping implementation in Rust.
 author: Christopher Eades 2023-10-07
 license: CC0 1.0 Universal https://creativecommons.org/publicdomain/zero/1.0/
 
