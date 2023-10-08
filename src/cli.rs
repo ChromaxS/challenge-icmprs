@@ -31,6 +31,11 @@ pub(crate) struct Args
     #[arg(short, long, default_value_t = 1000, value_parser = interval_range, help = "Interval, in milliseconds, between requests.")]
     pub interval: u64,
 
+    // echo request timeout //
+    // REQUIREMENT: ICMP Echo timeout should be set to 5 seconds.
+    #[arg(short, long, default_value_t = 5000, value_parser = timeout_range, help = "Timeout, in milliseconds, to wait for requests.")]
+    pub timeout: u64,
+
     // size of the packet //
     #[arg(short, long, default_value_t = 32, help = "Size of the ICMP echo data to send.")]
     pub size: usize,
@@ -62,5 +67,16 @@ pub fn interval_range(interval_parsed: &str) -> Result<u64, anyhow::Error>
         Ok(interval) if interval == 0 => Err(anyhow::anyhow!( "The interval must be at least 1ms: {}", interval )),
         Ok(interval) if interval > 0 && interval <= 1000 => Ok(interval),
         _ => Err(anyhow::anyhow!( "The interval must be a value between 1 and 1000ms: {}", interval_parsed )),
+    }
+}
+
+pub fn timeout_range(timeout_parsed: &str) -> Result<u64, anyhow::Error>
+{
+    // require the timeout to be from 1 to 10000ms //
+    match timeout_parsed.parse()
+    {
+        Ok(timeout) if timeout == 0 => Err(anyhow::anyhow!( "The timeout must be at least 1ms: {}", timeout )),
+        Ok(timeout) if timeout > 0 && timeout <= 10000 => Ok(timeout),
+        _ => Err(anyhow::anyhow!( "The timeout must be a value between 1 and 10000ms: {}", timeout_parsed )),
     }
 }
