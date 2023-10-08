@@ -195,19 +195,22 @@ pub(crate) fn ipv4_handle_icmp_error(
             _ => log::error!( "got unexpected ICMP echo identifier {} sequence {} from: {}", icmp_encapsulated.identifier, icmp_encapsulated.sequence, remote_addr ),
         }
 
-        // dequeue if we're tracking this //
-        program_state.sent.retain_mut(|sent|
+        // if regular output is being used then icmp errors are reported so we can dequeue them if we're tracking the sequence... otherwise let it timeout //
+        if matches!( program_state.output, crate::cli::OutputMode::Default ) || matches!( program_state.output, crate::cli::OutputMode::Regular )
         {
-            // see if this is the packet we're looking for //
-            if sent.sequence != icmp.sequence
+            program_state.sent.retain_mut(|sent|
             {
-                return true;
-            }
+                // see if this is the packet we're looking for //
+                if sent.sequence != icmp_encapsulated.sequence
+                {
+                    return true;
+                }
 
-            log::debug!( "dequeued sent tracking sequence ID: {}", sent.sequence );
+                log::debug!( "dequeued sent tracking sequence ID: {}", sent.sequence );
 
-            return false;
-        });
+                return false;
+            });
+        }
     }else
     {
         log::error!( "got unexpected ICMP echo identifier {} (was expecting {}) sequence={} from: {}", icmp.identifier, program_state.identifier, icmp.sequence, remote_addr );
