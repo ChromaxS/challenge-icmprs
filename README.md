@@ -4,6 +4,11 @@ interval and count (max pings) to send. A quiet mode is also implemented for ext
 that just want to get a "thumbs up/down" (non-zero exit code if the host fails to respond at
 least once).
 
+## License
+icmprs - An asynchronouse ICMP ping implementation in Rust.
+author: Christopher Eades 2023-10-07
+license: CC0 1.0 Universal https://creativecommons.org/publicdomain/zero/1.0/
+
 ## Crates
 ### anyhow
 The program is using anyhow to allow for some easy error handling feedback to the user but also
