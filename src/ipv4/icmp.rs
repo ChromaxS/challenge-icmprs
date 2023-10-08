@@ -54,7 +54,7 @@ pub fn ipv4_icmp_create_echo_request(identifier: u16, sequence: u16, data_size: 
     // write the data: ABCDEF... ABCDEF... //
     for n in 0..data_size - 1
     {
-        buf[ICMPV4_PKT_BUF_SIZE + n as usize] = ((n % 26) + 65) as u8;
+        buf[ICMPV4_PKT_BUF_SIZE + n] = ((n % 26) + 65) as u8;
     }
 
     // fixup the checksum now (bit-bang into the array... this is mostly sadness and a micro-optimization at the same time!) //
@@ -72,8 +72,8 @@ pub(crate) fn ipv4_handle_icmp_packet(remote_sock: &SockAddr, ip: &crate::ipv4::
     log::debug!( "got icmp packet: {:?}", &icmp );
     match icmp.r#type
     {
-        D_IPV4_ICMP_TYPE_ECHO_REPLY => ipv4_handle_icmp_echo_reply( &remote_sock, ip, &buf, &icmp, program_state ),
-        D_IPV4_ICMP_TYPE_UNREACHABLE | D_IPV4_ICMP_TYPE_EXCEEDED => ipv4_handle_icmp_error( &remote_sock, ip, &buf, &icmp, program_state ),
+        D_IPV4_ICMP_TYPE_ECHO_REPLY => ipv4_handle_icmp_echo_reply( remote_sock, ip, buf, &icmp, program_state ),
+        D_IPV4_ICMP_TYPE_UNREACHABLE | D_IPV4_ICMP_TYPE_EXCEEDED => ipv4_handle_icmp_error( remote_sock, ip, buf, &icmp, program_state ),
         _ =>
         {
             let remote_addr = remote_sock.as_socket_ipv4().unwrap();
@@ -137,7 +137,7 @@ pub(crate) fn ipv4_handle_icmp_echo_reply(
 
         if icmp.r#type == D_IPV4_ICMP_TYPE_ECHO_REPLY
         {
-            program_state.responded_successfully = program_state.responded_successfully + 1;
+            program_state.responded_successfully += 1;
         }
         return false;
     });
@@ -151,7 +151,7 @@ pub(crate) fn ipv4_handle_icmp_echo_reply(
 pub(crate) fn ipv4_handle_icmp_error(
     remote_sock: &SockAddr,
     ip: &crate::ipv4::Ipv4PacketHeaderV4,
-    buf: &Vec<u8>,
+    buf: &[u8],
     icmp: &IcmpPacketHeaderV4,
     program_state: &mut crate::IcmpProgramState) -> anyhow::Result<()>
 {

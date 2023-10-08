@@ -46,8 +46,8 @@ fn ipv4_compute_checksum(buf: &Vec<u8>) -> anyhow::Result<u16>
     let mut length = buf.len();
     if length > 0 && length % 2 > 0
     {
-        sum = sum + u32::from(buf[length as usize - 1]);
-        length = length - 1;
+        sum += u32::from(buf[length - 1]);
+        length -= 1;
     }
 
     if length > 0

@@ -69,7 +69,7 @@ async fn main()
     env_logger::init();
 
     // handle input arguments //
-    match args.host_or_args.to_owned().split(",").collect::<Vec<&str>>()
+    match args.host_or_args.to_owned().split(',').collect::<Vec<&str>>()
     {
         args_csv if args_csv.len() == 3 =>
         {
@@ -144,7 +144,7 @@ fn resolve_host_addr(host: &String) -> anyhow::Result<SocketAddr>
     // we'll simply assume any amount of colons means it's an IPv6 address and encapsulate the host with []'s and then let
     // further validation happen from to_socket_addrs (this is despite knowing things like aaaa:: is a valid IPv6 address,
     // again, we don't want to be in the business of validating this) //
-    let host_final = match host.to_owned().split(",").collect::<Vec<&str>>()
+    let host_final = match host.to_owned().split(',').collect::<Vec<&str>>()
     {
         components if components.len() > 1 => format!( "[{}]", &host ),
         _ => host.to_owned(),
@@ -298,7 +298,7 @@ async fn main_loop(
                 // make sure we don't send more echo requests than requested //
                 if program_state.sent_total >= args.count
                 {
-                    if program_state.sent.len() == 0
+                    if program_state.sent.is_empty()
                     {
                         // we're done //
                         log::debug!( "echo request count, {}, reached on echo request tick and no outstanding replies -- done", args.count );
@@ -325,7 +325,7 @@ async fn main_loop(
                     program_state.sequence = program_state.sequence.wrapping_add(1);
                 }
 
-                program_state.sent_total = program_state.sent_total + 1;
+                program_state.sent_total += 1;
             },
             // icmp incoming (echo replies) //
             readable = async_fd.readable() =>
@@ -370,10 +370,10 @@ async fn main_loop(
                                 },
                                 _ =>
                                 {
-                                    if program_state.sent_total >= args.count && program_state.sent.len() == 0
+                                    if program_state.sent_total >= args.count && program_state.sent.is_empty()
                                     {
                                         // we're done //
-                                        log::debug!( "echo request count, {}, reached after echo request and no outstanding replies -- done", args.count );
+                                        log::debug!( "echo request count, {}, reached after echo reply and no outstanding replies -- done", args.count );
                                         shutdown_notify.notify_waiters();
                                     }
                                     continue;
