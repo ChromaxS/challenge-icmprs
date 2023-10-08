@@ -1,16 +1,25 @@
 use anyhow;
-use clap::Parser;
+use clap::{Parser, ValueEnum};
+
+
+#[derive(Clone, Parser, ValueEnum, Debug)]
+pub(crate) enum OutputMode
+{
+    CSV,
+    Default,
+    Regular,
+}
 
 
 #[derive(Parser, Debug)]
 #[command(author = "Christopher Eades", version = "1.0", about = "A rust ICMP echo request (ping) utility.", long_about = None)]
 pub(crate) struct Args
 {
-    #[arg(last = true, required = true, help = "Host (or address) or CSV format: host,count,interval (implies --output-csv)")]
+    #[arg(last = true, required = true, help = "Host (or address) or CSV format: host,count,interval (implies --output=csv)")]
     pub host_or_args: String,
 
-    #[arg(short, long, default_value_t = false, help = "Output CSV format instead of interactive output. --quiet disables output entirely.")]
-    pub output_csv: bool,
+    #[arg(value_enum, short, long, default_value_t = OutputMode::Default, help = "Output mode; defaults to Regular. --quiet disables output entirely.")]
+    pub output: OutputMode,
 
     // amount of requests to send //
     #[arg(short, long, default_value_t = 4, value_parser = count_range, help = "Amount of requests to send.")]
@@ -22,6 +31,10 @@ pub(crate) struct Args
     #[arg(short, long, default_value_t = 1000, value_parser = interval_range, help = "Interval, in milliseconds, between requests.")]
     pub interval: u64,
 
+    // size of the packet //
+    #[arg(short, long, default_value_t = 32, help = "Size of the ICMP echo data to send.")]
+    pub size: usize,
+    
     // quiet or not //
     #[arg(short, long, default_value_t = false, help = "Program won't output any regular output.")]
     pub quiet: bool,
@@ -35,9 +48,9 @@ pub fn count_range(count_parsed: &str) -> Result<u64, anyhow::Error>
     // require the count to be from 1 to 10 //
     match count_parsed.parse()
     {
-        Ok(count) if count == 0 => Err(anyhow::anyhow!("The count must be at least 1.")),
+        Ok(count) if count == 0 => Err(anyhow::anyhow!( "The count must be at least 1: {}", count )),
         Ok(count) if count > 0 && count <= 10 => Ok(count),
-        _ => Err(anyhow::anyhow!("The count must be a value between 1 and 10.")),
+        _ => Err(anyhow::anyhow!( "The count must be a value between 1 and 10: {}", count_parsed )),
     }
 }
 
@@ -46,8 +59,8 @@ pub fn interval_range(interval_parsed: &str) -> Result<u64, anyhow::Error>
     // require the interval to be from 1 to 1000ms... basically no flooding and no super long requests //
     match interval_parsed.parse()
     {
-        Ok(interval) if interval == 0 => Err(anyhow::anyhow!("The interval must be at least 1ms.")),
+        Ok(interval) if interval == 0 => Err(anyhow::anyhow!( "The interval must be at least 1ms: {}", interval )),
         Ok(interval) if interval > 0 && interval <= 1000 => Ok(interval),
-        _ => Err(anyhow::anyhow!("The interval must be a value between 1 and 1000ms.")),
+        _ => Err(anyhow::anyhow!( "The interval must be a value between 1 and 1000ms: {}", interval_parsed )),
     }
 }
