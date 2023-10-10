@@ -11,7 +11,7 @@ use anyhow;
 use bincode;
 use serde::{Serialize, Deserialize};
 use socket2::SockAddr;
-use std::time::Instant;
+use std::net::IpAddr;
 
 
 // ICMPv4 header size //
@@ -94,57 +94,18 @@ pub(crate) fn ipv4_handle_icmp_echo_reply(
     {
         return Err(anyhow::anyhow!( "got unexpected ICMP echo identifier {} (was expecting {}) sequence={} from: {}", icmp.identifier, program_state.identifier, icmp.sequence, remote_addr ));
     }
-    let now = Instant::now();
-    let mut found_sequence = false;
-    // this isn't the most efficient but we're not working with a large list of packets and even then so, it'd have to be hundreds of thousands or so //
-    // to be really bad //
-    program_state.sent.retain_mut(|sent|
+    match program_state.remove_sequence(icmp.sequence)
     {
-        // see if this is the packet we're looking for //
-        if sent.sequence != icmp.sequence
+        Some(original_instant) =>
         {
-            return true;
-        }
-
-        found_sequence = true;
-        if !program_state.quiet
-        {
-            match program_state.output
-            {
-                crate::cli::OutputMode::Default | crate::cli::OutputMode::Regular =>
-                {
-                    // regular output //
-                    match icmp.r#type
-                    {
-                        D_IPV4_ICMP_TYPE_ECHO_REPLY =>
-                        {
-                            // normal reply //
-                            let request_millis = (now - sent.instant).as_secs_f64() * 1000.0;
-                            let data_bytes = buf.len() - ICMPV4_PKT_BUF_SIZE;
-                            println!( "{} bytes from {}: icmp_seq={} ttl={}: {:.3} ms", data_bytes, remote_addr.ip(), sent.sequence, ip.ttl, request_millis );
-                        },
-                        _ => println!( "Reply from {}: icmp_seq={}: unknown code received", remote_addr.ip(), sent.sequence ),
-                    }
-                },
-                crate::cli::OutputMode::CSV =>
-                {
-                    // REQUIREMENT: IPv4,icmp_sequence_number,elapsed_time_in_microseconds
-                    let elapsed_in_microseconds = (now - program_state.started).as_micros();
-                    println!( "{},{},{}", remote_addr.ip(), sent.sequence, elapsed_in_microseconds );
-                },
-            }
-        }
-
-        if icmp.r#type == D_IPV4_ICMP_TYPE_ECHO_REPLY
-        {
+            let data_bytes = buf.len() - ICMPV4_PKT_BUF_SIZE;
+            let remote_ip = IpAddr::V4(remote_sock.as_socket_ipv4().unwrap().ip().to_owned());
+            program_state.output_ping( data_bytes, &program_state.host_addr.ip(), &remote_ip, original_instant, icmp.sequence, ip.ttl );
             program_state.responded_successfully += 1;
-        }
-        return false;
-    });
-    if !found_sequence
-    {
-        log::error!( "got unexpected ICMP echo sequence {} from: {}", icmp.sequence, remote_addr );
+        },
+        _ => log::error!( "got unexpected ICMP echo sequence {} from: {}", icmp.sequence, remote_addr ),
     }
+
     Ok(())
 }
 
@@ -172,48 +133,29 @@ pub(crate) fn ipv4_handle_icmp_error(
     let (_, buf_icmp_encapsulated) = buf_ip_encapsulated.split_at(data_encapsulated_offset.into());
     let icmp_encapsulated: IcmpPacketHeaderV4 = bincode::deserialize(buf_icmp_encapsulated)?;
     log::debug!( "got icmp encapsulated packet: {:?}", &icmp_encapsulated );
-    let remote_addr = remote_sock.as_socket_ipv4().unwrap();
+
+    // only regular output should be handled here... CSV just times out in the main loop //
+    let remote_ip = IpAddr::V4(remote_sock.as_socket_ipv4().unwrap().ip().to_owned());
     if icmp_encapsulated.identifier == program_state.identifier
     {
-        // report on the encapsulated packet //
-        match icmp.r#type
+        if !matches!( program_state.output, crate::cli::OutputMode::CSV )
         {
-            D_IPV4_ICMP_TYPE_UNREACHABLE =>
-            {
-                if !program_state.quiet && (matches!( program_state.output, crate::cli::OutputMode::Default ) || matches!( program_state.output, crate::cli::OutputMode::Regular ))
-                {
-                    println!( "Reply from {}: icmp_seq={} ttl={}: host unreachable", remote_addr.ip(), icmp_encapsulated.sequence, ip.ttl );
-                }
-            },
-            D_IPV4_ICMP_TYPE_EXCEEDED =>
-            {
-                if !program_state.quiet && (matches!( program_state.output, crate::cli::OutputMode::Default ) || matches!( program_state.output, crate::cli::OutputMode::Regular ))
-                {
-                    println!( "Reply from {}: icmp_seq={} ttl={}: time to live exceeded", remote_addr.ip(), icmp_encapsulated.sequence, ip.ttl );
-                }
-            },
-            _ => log::error!( "got unexpected ICMP echo identifier {} sequence {} from: {}", icmp_encapsulated.identifier, icmp_encapsulated.sequence, remote_addr ),
-        }
+            // if regular output is being used then icmp errors are reported so we can dequeue them if we're tracking the sequence... otherwise let it timeout //
 
-        // if regular output is being used then icmp errors are reported so we can dequeue them if we're tracking the sequence... otherwise let it timeout //
-        if matches!( program_state.output, crate::cli::OutputMode::Default ) || matches!( program_state.output, crate::cli::OutputMode::Regular )
-        {
-            program_state.sent.retain_mut(|sent|
+            // dequeue //
+            let original_instant = program_state.remove_sequence(icmp_encapsulated.sequence);
+
+            // report on the encapsulated packet //
+            match icmp.r#type
             {
-                // see if this is the packet we're looking for //
-                if sent.sequence != icmp_encapsulated.sequence
-                {
-                    return true;
-                }
-
-                log::debug!( "dequeued sent tracking sequence ID: {}", sent.sequence );
-
-                return false;
-            });
+                D_IPV4_ICMP_TYPE_UNREACHABLE => program_state.output_error( &program_state.host_addr.ip(), &remote_ip, original_instant, icmp_encapsulated.sequence, ip.ttl, "host unreachable".to_owned() ),
+                D_IPV4_ICMP_TYPE_EXCEEDED => program_state.output_error( &program_state.host_addr.ip(), &remote_ip, original_instant, icmp_encapsulated.sequence, ip.ttl, "time to live exceeded".to_owned() ),
+                _ => log::error!( "got unexpected ICMP echo identifier {} sequence {} from: {}", icmp_encapsulated.identifier, icmp_encapsulated.sequence, remote_ip ),
+            };
         }
     }else
     {
-        log::error!( "got unexpected ICMP echo identifier {} (was expecting {}) sequence={} from: {}", icmp.identifier, program_state.identifier, icmp.sequence, remote_addr );
+        log::error!( "got unexpected ICMP echo identifier {} (was expecting {}) sequence={} from: {}", icmp.identifier, program_state.identifier, icmp.sequence, remote_ip );
     }
     Ok(())
 }
