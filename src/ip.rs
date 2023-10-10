@@ -67,16 +67,18 @@ impl IcmpSocket
         };
 
         // finally bind //
-        //icmp_socket.inner.bind(&icmp_socket.remote)?;
+        // FIXME: does not bind on WSL
+        // icmp_socket.inner.bind(&icmp_socket.remote)?;
 
         Ok(icmp_socket)
     }
 
+    /* unused for now
     pub fn get_remote(&self) -> SockAddr
     {
         // gets the address that was specified for bind //
         return self.remote.to_owned();
-    }
+    }*/
 
     pub fn send(&self, buf: &[u8]) -> Result<usize, std::io::Error>
     {
@@ -84,11 +86,12 @@ impl IcmpSocket
         self.inner.send_to( buf, &self.remote )
     }
 
+    /* unused for now
     pub fn send_to(&self, buf: &[u8], host: &SockAddr) -> Result<usize, std::io::Error>
     {
         // sends to an arbitrary address //
         self.inner.send_to( buf, host )
-    }
+    }*/
 
     pub async fn recv_from(&self, buf: &mut Vec<u8>) -> Result<(usize, SockAddr), std::io::Error>
     {
