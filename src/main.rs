@@ -13,19 +13,17 @@ use env_logger;
 use hostname;
 use log;
 use rand::{self, Rng};
-use socket2::{SockAddr, Socket, Domain, Type, Protocol};
+use socket2::SockAddr;
 use std::env;
 use std::net::{SocketAddr, ToSocketAddrs};
-use std::os::fd::AsFd;
 use std::process::exit;
 use std::time::{Duration, Instant};
-use tokio::io::unix::AsyncFd;
 use tokio::signal;
 use tokio::sync::Notify;
-use tokio::time::Interval;
 
 mod cli;
 use cli::Args;
+mod ip;
 mod ipv4;
 
 
@@ -115,10 +113,12 @@ async fn main()
     // first resolve host in-case there's any issues with it //
     let host_addr = resolve_host_addr(&args.host_or_args).unwrap();
 
-    // create the icmp socket and setup tokio stuff //
-    let socket = setup_socket(&host_addr).unwrap();
+    // create socket //
+    let sockaddr = SockAddr::from(host_addr.to_owned());
+    let socket = ip::IcmpSocket::bind(&sockaddr).unwrap();
+
+    // create shutdown event //
     let shutdown_notify = Notify::new();
-    let mut echo_interval = tokio::time::interval(Duration::from_millis(args.interval));
 
     if matches!( args.output, cli::OutputMode::Regular ) && !args.quiet
     {
@@ -128,7 +128,7 @@ async fn main()
     log::debug!( "count (amount of requests to send) is: {}", args.count );
     log::debug!( "interval is {} millisecond(s)", args.interval );
 
-    if true == main_loop( &args, &shutdown_notify, &mut echo_interval, &host_addr, &socket ).await.unwrap()
+    if true == main_loop( &socket, &args, &shutdown_notify, &host_addr ).await.unwrap()
     {
         exit(0);
     }
@@ -163,42 +163,18 @@ fn resolve_host_addr(host: &String) -> anyhow::Result<SocketAddr>
     Ok(host_addr)
 }
 
-fn setup_socket(host_addr: &SocketAddr) -> anyhow::Result<Socket>
-{
-    let socket = if host_addr.is_ipv4()
-    {
-        Socket::new_raw( Domain::IPV4, Type::RAW, Some(Protocol::ICMPV4) ).map_err(anyhow::Error::from)
-    }else if host_addr.is_ipv6()
-    {
-        // TODO: v6... //
-        return Err(anyhow::anyhow!("does not support IPv6!"));
-    }else
-    {
-        return Err(anyhow::anyhow!( "specified host, {}, is neither IPv4 or IPv6!", host_addr ));
-    }?;
-
-    // allow us to do non-blocking I/O //
-    socket.set_nonblocking(true)?;
-
-    Ok(socket)
-}
-
 async fn main_loop(
-    args: &cli::Args,
-    shutdown_notify: &Notify,
-    echo_interval: &mut Interval,
-    host_addr: &SocketAddr,
-    socket: &Socket) -> anyhow::Result<bool>
+  socket: &ip::IcmpSocket,
+  args: &cli::Args,
+  shutdown_notify: &Notify,
+  host_addr: &SocketAddr
+) -> anyhow::Result<bool>
 {
     // ctrl+c and interrupt handler //
     let mut signal_interrupt_stream = signal::unix::signal(signal::unix::SignalKind::interrupt())?;
     let mut signal_terminate_stream = signal::unix::signal(signal::unix::SignalKind::terminate())?;
     // shutdown notification //
     let shutdown_notification = shutdown_notify.notified();
-
-    // we'll use this for sending and recv'ing in tokio::select! //
-    let async_fd = AsyncFd::new(socket.as_fd())?;
-    let sockaddr = SockAddr::from(host_addr.to_owned());
 
     // timeout //
     let timeout = Duration::from_millis(args.timeout);
@@ -227,10 +203,17 @@ async fn main_loop(
     let host_name = hostname::get()?;
     let host_ip = resolve_host_addr(&host_name.to_string_lossy().to_string())?;
 
+    // allocate the receiving buffer //
+    let mut buf_recv = Vec::with_capacity(IPV4_MAX_PACKET_SIZE);
+
+    // finally setup our echo interval tick //
+    let mut echo_interval = tokio::time::interval(Duration::from_millis(args.interval));
+
     log::debug!("starting main_loop...");
     tokio::pin!(shutdown_notification);
     loop
     {
+        buf_recv.clear();
         tokio::select!
         {
             // shutdown //
@@ -312,7 +295,7 @@ async fn main_loop(
                 {
                     // send //
                     let buffer = ipv4::icmp::ipv4_icmp_create_echo_request( program_state.identifier, program_state.sequence, args.size )?;
-                    socket.send_to( &buffer, &sockaddr )?;
+                    socket.send(&buffer)?;
 
                     // track //
                     program_state.sent.push(IcmpEchoRequest
@@ -328,40 +311,15 @@ async fn main_loop(
                 program_state.sent_total += 1;
             },
             // icmp incoming (echo replies) //
-            readable = async_fd.readable() =>
+            received = socket.recv_from(&mut buf_recv) =>
             {
-                match readable
+                match received
                 {
-                    Ok(mut guard) =>
+                    Ok(received) =>
                     {
-                        let mut buf = Vec::with_capacity(IPV4_MAX_PACKET_SIZE);
-                        let ( len, remote_sock ) = match socket.recv_from(buf.spare_capacity_mut())
-                        {
-                            Ok((len, remote_sock)) => (len, remote_sock),
-                            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => continue,
-                            Err(e) =>
-                            {
-                                unsafe
-                                {
-                                    buf.set_len(0);
-                                }
-                                log::error!( "error receiving ICMP packet: {}", e );
-                                shutdown_notify.notify_waiters();
-                                continue;
-                            }
-                        };
-                        unsafe
-                        {
-                            buf.set_len(len);
-                        }
-                        guard.clear_ready();
-                        if len == 0
-                        {
-                            continue;
-                        }
                         if host_addr.is_ipv4()
                         {
-                            match ipv4::ipv4_handle_packet( &remote_sock, &buf, &mut program_state )
+                            match ipv4::ipv4_handle_packet( &received.1, &buf_recv, &mut program_state )
                             {
                                 Err(e) =>
                                 {
@@ -381,7 +339,7 @@ async fn main_loop(
                             }
                         }
                     },
-                    Err(e) => log::error!( "unable to check readystate for ICMP socket: {}", e ),
+                    Err(e) => log::error!( "unable to recv_from on ICMP socket: {}", e ),
                 }
             }
         }
