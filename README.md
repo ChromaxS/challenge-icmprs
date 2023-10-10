@@ -48,7 +48,7 @@ icmprs (master) $ cargo run -- --help
      Running `target/debug/icmprs --help`
 A rust ICMP echo request (ping) utility.
 
-Usage: icmprs [OPTIONS] -- <HOST_OR_ARGS>
+Usage: icmprs [OPTIONS] <HOST_OR_ARGS>
 
 Arguments:
   <HOST_OR_ARGS>  Host (or address) or CSV format: host,count,interval (implies --output=csv)
@@ -67,7 +67,7 @@ Options:
 
 The simplest usage is to run with just a host:
 ```
-icmprs (master) $ sudo cargo run -- -- 192.168.2.2
+icmprs (master) $ sudo cargo run -- 192.168.2.2
     Finished dev [unoptimized + debuginfo] target(s) in 0.07s
      Running `target/debug/icmprs --help`
 Pinging 192.168.2.2 (192.168.2.2) with 32 byte(s) of data...
@@ -79,11 +79,11 @@ Pinging 192.168.2.2 (192.168.2.2) with 32 byte(s) of data...
 Sent 3 echo requests and received 3 successful replies.
 ```
 
-Note: `cargo run` may not run under `sudo` if it's installed local to the user's home directory. Using `sudo -E $(which cargo) run -- -- 192.168.2.2` or running the binary directly from the target directory may be necessary.
+Note: `cargo run` may not run under `sudo` if it's installed local to the user's home directory. Using `sudo -E $(which cargo) run -- 192.168.2.2` or running the binary directly from the target directory may be necessary.
 
 A special CSV mode exists that takes the host parameter as: `host,count,interval`:
 ```
-icmprs (master) $ sudo target/debug/icmprs -- 192.168.2.2,3,200
+icmprs (master) $ sudo target/debug/icmprs 192.168.2.2,3,200
 192.168.2.2,1,1169
 192.168.2.2,2,201283
 192.168.2.2,3,401454
@@ -94,7 +94,7 @@ Note: if the specified host times out, then the elapsed time is shown as: `-1`
 
 When running in regular output mode, some ICMP errors are handled, ie host unreachable and TTL exceeded:
 ```
-icmprs (master) $ sudo target/debug/icmprs --output=regular -- 192.168.2.3,3,200
+icmprs (master) $ sudo target/debug/icmprs --output=regular 192.168.2.3,3,200
 Pinging 192.168.2.3 (192.168.2.3) with 32 byte(s) of data...
 
 Reply from 192.168.2.1: icmp_seq=1 ttl=63: host unreachable
@@ -126,7 +126,7 @@ Successfully tagged challenge/icmprs:latest
 
 The program can be run right from the container:
 ```
-icmprs (master) $ docker run --rm challenge/icmprs -- www.google.com
+icmprs (master) $ docker run --rm challenge/icmprs www.google.com
 Pinging www.google.com (142.250.191.100) with 32 byte(s) of data...
 
 32 bytes from 142.250.191.100: icmp_seq=1 ttl=59: 7.189 ms

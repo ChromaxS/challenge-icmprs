@@ -24,7 +24,7 @@ pub(crate) enum OutputMode
 #[command(author = "Christopher Eades", version = "1.0", about = "A rust ICMP echo request (ping) utility.", long_about = None)]
 pub(crate) struct Args
 {
-    #[arg(last = true, required = true, help = "Host (or address) or CSV format: host,count,interval (implies --output=csv)")]
+    #[arg(required = true, help = "Host (or address) or CSV format: host,count,interval (implies --output=csv)")]
     pub host_or_args: String,
 
     #[arg(value_enum, short, long, default_value_t = OutputMode::Default, help = "Output mode; defaults to Regular. --quiet disables output entirely.")]
