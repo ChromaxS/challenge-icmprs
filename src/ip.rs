@@ -105,6 +105,7 @@ impl IcmpSocket
         {
             Ok((len, remote_sock)) =>
             {
+                // TODO: SAFETY comment here
                 unsafe
                 {
                     buf.set_len(len);
@@ -114,6 +115,7 @@ impl IcmpSocket
             // forward to caller //
             Err(e) =>
             {
+                // TODO: SAFETY comment here
                 // make sure the buffer is burned //
                 unsafe
                 {
