@@ -113,6 +113,7 @@ pub(crate) fn ipv4_handle_icmp_echo_reply(
                 data_bytes,
                 &program_state.host_addr.ip(),
                 &remote_ip,
+                program_state.started,
                 original_instant,
                 icmp.sequence,
                 ip.ttl,

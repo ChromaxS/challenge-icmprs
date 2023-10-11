@@ -412,7 +412,7 @@ impl IcmpProgramState {
         &self,
         host_ip: &IpAddr,
         remote_ip: &IpAddr,
-        instant_original: Option<Instant>,
+        instant_echo_request: Option<Instant>,
         sequence: u16,
         ttl: u8,
         error: String,
@@ -424,10 +424,10 @@ impl IcmpProgramState {
         match self.output {
             crate::cli::OutputMode::Default | crate::cli::OutputMode::Regular => {
                 // regular output //
-                match instant_original {
-                    Some(instant_original) => {
+                match instant_echo_request {
+                    Some(instant_echo_request) => {
                         let request_millis =
-                            (Instant::now() - instant_original).as_secs_f64() * 1000.0;
+                            (Instant::now() - instant_echo_request).as_secs_f64() * 1000.0;
                         println!(
                             "Reply from {}: icmp_seq={} ttl={}: {:.3} ms -- {}",
                             remote_ip, sequence, ttl, request_millis, error
@@ -451,7 +451,8 @@ impl IcmpProgramState {
         data_bytes: usize,
         host_ip: &IpAddr,
         remote_ip: &IpAddr,
-        instant_original: Instant,
+        instant_program_started: Instant,
+        instant_echo_request: Instant,
         sequence: u16,
         ttl: u8,
     ) {
@@ -462,7 +463,7 @@ impl IcmpProgramState {
         match self.output {
             crate::cli::OutputMode::Default | crate::cli::OutputMode::Regular => {
                 // regular output //
-                let request_millis = (Instant::now() - instant_original).as_secs_f64() * 1000.0;
+                let request_millis = (Instant::now() - instant_echo_request).as_secs_f64() * 1000.0;
                 println!(
                     "{} bytes from {}: icmp_seq={} ttl={}: {:.3} ms",
                     data_bytes, remote_ip, sequence, ttl, request_millis
@@ -470,7 +471,7 @@ impl IcmpProgramState {
             }
             crate::cli::OutputMode::CSV => {
                 // all errors are attributed to the host IP not the received IP //
-                self.output_csv(host_ip, Some(instant_original), sequence);
+                self.output_csv(host_ip, Some(instant_program_started), sequence);
             }
         }
     }
