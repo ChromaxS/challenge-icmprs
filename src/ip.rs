@@ -90,7 +90,10 @@ impl IcmpSocket {
         guard.clear_ready();
         match recv_result {
             Ok((len, remote_sock)) => {
-                // TODO: SAFETY comment here
+                // # SAFETY
+                // the Vector passed in, as buf, has a size which is used in the call above to recv_from like: buf.spare_capacity_mut //
+                // recv_from will not return more bytes than the size of the Vector buf which means it's safe for setting the length //
+                // of the Vector to the return value of recv_from. //
                 unsafe {
                     buf.set_len(len);
                 }
@@ -98,11 +101,9 @@ impl IcmpSocket {
             }
             // forward to caller //
             Err(e) => {
-                // make sure the buffer is burned //
-                // TODO: SAFETY comment here
-                unsafe {
-                    buf.set_len(0);
-                }
+                // make sure the buffer is burned so the behavior of recv_from (ie interrupted/partial recvfrom operation) or other //
+                // indeterministric behavior does not affect the caller when an error occurs //
+                buf.clear();
                 Err(e)
             }
         }
