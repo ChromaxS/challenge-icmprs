@@ -36,7 +36,6 @@ pub(crate) struct IcmpEchoRequest {
 pub(crate) struct IcmpProgramState {
     pub started: Instant,
     pub responded_successfully: u64,
-    pub quiet: bool,
     pub output: cli::OutputMode,
 
     pub host_addr: SocketAddr,
@@ -53,54 +52,18 @@ async fn main() {
 
     // handle clap args first //
     let mut args = Args::parse();
+    if args.quiet {
+        args.output = crate::cli::OutputMode::Quiet;
+    }
+    if matches!( args.output, crate::cli::OutputMode::Default ) {
+        args.output = crate::cli::OutputMode::Regular;
+    }
 
     // only set RUST_LOG environment variable if it's not already set //
-    if env::var("RUST_LOG").is_err() && !args.quiet {
+    if env::var("RUST_LOG").is_err() && !matches!( args.output, crate::cli::OutputMode::Quiet ) {
         env::set_var("RUST_LOG", "INFO");
     }
     env_logger::init();
-
-    // handle input arguments //
-    match args
-        .host_or_args
-        .to_owned()
-        .split(',')
-        .collect::<Vec<&str>>()
-    {
-        args_csv if args_csv.len() == 3 => {
-            // REQUIREMENT: Input will be passed in as CSV format in the first argument to the executable, e.g.
-            //              Where the first column is the IPv4 address, the second column is the number of requests to send,
-            //              and the third column is the interval in milliseconds between sent requests. You may assume there
-            //              is no header row.
-
-            // force CSV output //
-            if matches!(args.output, cli::OutputMode::Default) {
-                args.output = cli::OutputMode::CSV;
-            }
-
-            // parse host: arg 1 //
-            args.host_or_args = args_csv[0].to_owned();
-
-            // parse count: arg 2 //
-            args.count = match cli::count_range(args_csv[1]) {
-                Ok(count) => count,
-                Err(e) => panic!("CSV argument 2, count, invalid: {}", e),
-            };
-
-            // parse interval: arg 3 //
-            args.interval = match cli::interval_range(args_csv[2]) {
-                Ok(interval) => interval,
-                Err(e) => panic!("CSV argument 3, interval, invalid: {}", e),
-            };
-        }
-        args_csv if args_csv.len() == 1 => {
-            // regular is the default output mode //
-            if matches!(args.output, cli::OutputMode::Default) {
-                args.output = cli::OutputMode::Regular;
-            }
-        }
-        _ => panic!("CSV arguments to program should be: host,count,interval"),
-    }
 
     // first resolve host in-case there's any issues with it //
     let host_addr = resolve_host_addr(&args.host_or_args).unwrap();
@@ -112,7 +75,7 @@ async fn main() {
     // create shutdown event //
     let shutdown_notify = Notify::new();
 
-    if matches!(args.output, cli::OutputMode::Regular) && !args.quiet {
+    if matches!(args.output, cli::OutputMode::Regular) {
         println!(
             "Pinging {} ({}) with {} byte(s) of data...",
             &args.host_or_args,
@@ -181,7 +144,6 @@ async fn main_loop(
     let mut program_state = IcmpProgramState {
         started: Instant::now(),
         responded_successfully: 0,
-        quiet: args.quiet,
         output: args.output.clone(),
         host_addr: host_addr.to_owned(),
 
@@ -259,7 +221,7 @@ async fn main_loop(
                                 },
                                 _ =>
                                 {
-                                    if program_state.sent_total >= args.count && program_state.sent.is_empty()
+                                    if args.count > 0 && program_state.sent_total >= args.count && program_state.sent.is_empty()
                                     {
                                         // we're done //
                                         log::debug!( "echo request count, {}, reached after echo reply and no outstanding replies -- done", args.count );
@@ -281,9 +243,7 @@ async fn main_loop(
         (Instant::now() - program_state.started).as_secs_f64()
     );
 
-    if !program_state.quiet
-        && (matches!(program_state.output, cli::OutputMode::Default)
-            || matches!(program_state.output, cli::OutputMode::Regular))
+    if matches!(program_state.output, cli::OutputMode::Regular)
     {
         println!("");
         println!(
@@ -308,7 +268,6 @@ fn icmp_send_tick(
     // this isn't too efficient (at larger amounts of pings, like hundreds of thousands) but it gives us feedback at the right time //
     // ie 5 seconds after each 200ms interval //
     let now = Instant::now();
-    let remote_addr = program_state.host_addr.ip();
     let timeout = Duration::from_millis(args.timeout);
     let mut timed_out_requests = Vec::<IcmpEchoRequest>::new();
     program_state.sent.retain_mut(|sent| {
@@ -323,7 +282,6 @@ fn icmp_send_tick(
     });
     for timed_out_request in timed_out_requests.iter() {
         program_state.output_error(
-            &remote_addr,
             &host_ip.ip(),
             Some(timed_out_request.instant),
             timed_out_request.sequence,
@@ -333,7 +291,7 @@ fn icmp_send_tick(
     }
 
     // make sure we don't send more echo requests than requested //
-    if program_state.sent_total >= args.count {
+    if args.count > 0 && program_state.sent_total >= args.count {
         if !program_state.has_sequences() {
             // we're done //
             log::debug!( "echo request count, {}, reached on echo request tick and no outstanding replies -- done", args.count );
@@ -393,24 +351,8 @@ impl IcmpProgramState {
         found_sequence
     }
 
-    pub fn output_csv(&self, host_ip: &IpAddr, instant_original: Option<Instant>, sequence: u16) {
-        // output CSV format (if not quiet) //
-        if self.quiet {
-            return;
-        }
-        if let Some(instant_original) = instant_original {
-            // REQUIREMENT: IPv4,icmp_sequence_number,elapsed_time_in_microseconds
-            let elapsed_in_microseconds = (Instant::now() - instant_original).as_micros();
-            println!("{},{},{}", host_ip, sequence, elapsed_in_microseconds);
-        } else {
-            // REQUIREMENT: If the reply times out, use -1 for the elapsed_time_in_microseconds field.
-            println!("{},{},-1", host_ip, sequence);
-        }
-    }
-
     pub fn output_error(
         &self,
-        host_ip: &IpAddr,
         remote_ip: &IpAddr,
         instant_echo_request: Option<Instant>,
         sequence: u16,
@@ -418,9 +360,6 @@ impl IcmpProgramState {
         error: String,
     ) {
         // outputs an error (if not set to quiet) //
-        if self.quiet {
-            return;
-        }
         match self.output {
             crate::cli::OutputMode::Default | crate::cli::OutputMode::Regular => {
                 // regular output //
@@ -438,28 +377,19 @@ impl IcmpProgramState {
                         remote_ip, sequence, ttl, error
                     ),
                 }
-            }
-            crate::cli::OutputMode::CSV => {
-                // all errors are attributed to the host IP not the received IP //
-                self.output_csv(host_ip, None, sequence);
-            }
+            },
+            crate::cli::OutputMode::Quiet => {},
         }
     }
 
     pub fn output_ping(
         &self,
         data_bytes: usize,
-        host_ip: &IpAddr,
         remote_ip: &IpAddr,
-        instant_program_started: Instant,
         instant_echo_request: Instant,
         sequence: u16,
         ttl: u8,
     ) {
-        // outputs a normal ping (if not quiet) //
-        if self.quiet {
-            return;
-        }
         match self.output {
             crate::cli::OutputMode::Default | crate::cli::OutputMode::Regular => {
                 // regular output //
@@ -468,11 +398,8 @@ impl IcmpProgramState {
                     "{} bytes from {}: icmp_seq={} ttl={}: {:.3} ms",
                     data_bytes, remote_ip, sequence, ttl, request_millis
                 );
-            }
-            crate::cli::OutputMode::CSV => {
-                // all errors are attributed to the host IP not the received IP //
-                self.output_csv(host_ip, Some(instant_program_started), sequence);
-            }
+            },
+            crate::cli::OutputMode::Quiet => {},
         }
     }
 }

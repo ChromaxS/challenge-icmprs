@@ -51,15 +51,15 @@ A rust ICMP echo request (ping) utility.
 Usage: icmprs [OPTIONS] <HOST_OR_ARGS>
 
 Arguments:
-  <HOST_OR_ARGS>  Host (or address) or CSV format: host,count,interval (implies --output=csv)
+  <HOST_OR_ARGS>  Host (or address).
 
 Options:
-  -o, --output <OUTPUT>      Output mode; defaults to Regular. --quiet disables output entirely. [default: default] [possible values: csv, default, regular]
+  -o, --output <OUTPUT>      Output mode; defaults to Regular. --quiet disables output entirely. [default: default] [possible values: default, regular, quiet]
   -c, --count <COUNT>        Amount of requests to send. [default: 4]
   -i, --interval <INTERVAL>  Interval, in milliseconds, between requests. [default: 1000]
   -t, --timeout <TIMEOUT>    Timeout, in milliseconds, to wait for requests. [default: 5000]
   -s, --size <SIZE>          Size of the ICMP echo data to send. [default: 32]
-  -q, --quiet                Program won't output any regular output.
+  -q, --quiet                Program won't output any regular output (equivalent to -o=quiet).
   -h, --help                 Print help
   -V, --version              Print version
 
@@ -80,17 +80,6 @@ Sent 3 echo requests and received 3 successful replies.
 ```
 
 Note: `cargo run` may not run under `sudo` if it's installed local to the user's home directory. Using `sudo -E $(which cargo) run -- 192.168.2.2` or running the binary directly from the target directory may be necessary.
-
-A special CSV mode exists that takes the host parameter as: `host,count,interval`:
-```
-icmprs (master) $ sudo target/debug/icmprs 192.168.2.2,3,200
-192.168.2.2,1,1169
-192.168.2.2,2,201283
-192.168.2.2,3,401454
-```
-The output format is: `IPv4,icmp_sequence_number,elapsed_time_in_microseconds`
-
-Note: if the specified host times out, then the elapsed time is shown as: `-1`
 
 When running in regular output mode, some ICMP errors are handled, ie host unreachable and TTL exceeded:
 ```

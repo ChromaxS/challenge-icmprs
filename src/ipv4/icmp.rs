@@ -111,9 +111,7 @@ pub(crate) fn ipv4_handle_icmp_echo_reply(
             let remote_ip = IpAddr::V4(remote_sock.as_socket_ipv4().unwrap().ip().to_owned());
             program_state.output_ping(
                 data_bytes,
-                &program_state.host_addr.ip(),
                 &remote_ip,
-                program_state.started,
                 original_instant,
                 icmp.sequence,
                 ip.ttl,
@@ -160,19 +158,18 @@ pub(crate) fn ipv4_handle_icmp_error(
     let icmp_encapsulated: IcmpPacketHeaderV4 = bincode::deserialize(buf_icmp_encapsulated)?;
     log::debug!("got icmp encapsulated packet: {:?}", &icmp_encapsulated);
 
-    // only regular output should be handled here... CSV just times out in the main loop //
+    // only regular output should be handled here... //
     let remote_ip = IpAddr::V4(remote_sock.as_socket_ipv4().unwrap().ip().to_owned());
     if icmp_encapsulated.identifier == program_state.identifier {
-        if !matches!(program_state.output, crate::cli::OutputMode::CSV) {
-            // if regular output is being used then icmp errors are reported so we can dequeue them if we're tracking the sequence... otherwise let it timeout //
+        // dequeue //
+        let original_instant = program_state.remove_sequence(icmp_encapsulated.sequence);
 
-            // dequeue //
-            let original_instant = program_state.remove_sequence(icmp_encapsulated.sequence);
+        if matches!(program_state.output, crate::cli::OutputMode::Regular) {
+            // if regular output is being used then icmp errors are reported so we can dequeue them if we're tracking the sequence... otherwise let it timeout //
 
             // report on the encapsulated packet //
             match icmp.r#type {
                 D_IPV4_ICMP_TYPE_UNREACHABLE => program_state.output_error(
-                    &program_state.host_addr.ip(),
                     &remote_ip,
                     original_instant,
                     icmp_encapsulated.sequence,
@@ -180,7 +177,6 @@ pub(crate) fn ipv4_handle_icmp_error(
                     "host unreachable".to_owned(),
                 ),
                 D_IPV4_ICMP_TYPE_EXCEEDED => program_state.output_error(
-                    &program_state.host_addr.ip(),
                     &remote_ip,
                     original_instant,
                     icmp_encapsulated.sequence,
